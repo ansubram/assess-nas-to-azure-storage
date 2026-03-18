@@ -1,0 +1,37 @@
+import { useState } from 'react'
+import DecisionTree from './components/DecisionTree'
+import Results from './components/Results'
+import { questions, outcomes } from './data/treeConfig'
+import { getEligibleOutcomes } from './utils/matchOutcomes'
+
+function App() {
+  const [answers, setAnswers] = useState(null)
+
+  function handleComplete(userAnswers) {
+    setAnswers(userAnswers)
+  }
+
+  function handleRestart() {
+    setAnswers(null)
+  }
+
+  const eligibleOutcomes = answers ? getEligibleOutcomes(outcomes, answers) : []
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1>Assess NAS Sources to Azure Storage</h1>
+        <p>Answer a few questions and we'll find the best options for you.</p>
+      </header>
+
+      {answers === null ? (
+        <DecisionTree questions={questions} onComplete={handleComplete} />
+      ) : (
+        <Results outcomes={eligibleOutcomes} answers={answers} questions={questions} onRestart={handleRestart} />
+      )}
+    </div>
+  )
+}
+
+export default App
+
