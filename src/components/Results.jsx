@@ -1,4 +1,5 @@
 import { isAvailableInRegion } from "../data/regionAvailability.js";
+import { getBlobArchiveRedundancyAdjustment } from "../utils/matchOutcomes.js";
 
 /**
  * Resolve a stored answer value (string or array) to a human-readable label
@@ -28,6 +29,14 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
     answers?.region &&
     !isAvailableInRegion("anf-default", answers.region);
 
+  const blobArchiveRedundancyAdjustment = getBlobArchiveRedundancyAdjustment(answers);
+  const redundancyLabelMap = {
+    lrs: "LRS",
+    zrs: "ZRS",
+    grs: "GRS",
+    gzrs: "GZRS",
+  };
+
   // Build the list of questions that were actually answered (visible questions only)
   const answeredQuestions = (questions ?? []).filter(
     (q) => answers[q.id] !== undefined
@@ -44,6 +53,12 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
       {anfRegionExcluded && (
         <p className="region-notice">
           ⚠ Azure NetApp Files is not available in the selected region and has been excluded from results.
+        </p>
+      )}
+
+      {blobArchiveRedundancyAdjustment && (
+        <p className="region-notice">
+          ⚠ Azure Blob Archive tier does not support {redundancyLabelMap[blobArchiveRedundancyAdjustment.requested]}. For compatibility, this assessment uses {redundancyLabelMap[blobArchiveRedundancyAdjustment.applied]} for the Archive tier.
         </p>
       )}
 
@@ -71,7 +86,14 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
         <ul className="results-list">
           {outcomes.map((outcome) => (
             <li key={outcome.id} className="result-item">
-              <h3 className="result-title">{outcome.title}</h3>
+              <div className="result-title-row">
+                <h3 className="result-title">{outcome.title}</h3>
+                {outcome.id === "blob-archive" && blobArchiveRedundancyAdjustment && (
+                  <span className="result-badge" aria-label="Redundancy adjusted for compatibility">
+                    Redundancy adjusted to {redundancyLabelMap[blobArchiveRedundancyAdjustment.applied]}
+                  </span>
+                )}
+              </div>
               <p className="result-description">{outcome.description}</p>
             </li>
           ))}

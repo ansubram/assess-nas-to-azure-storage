@@ -3,6 +3,25 @@ import { serviceOutcomeMap } from "../data/treeConfig.js";
 import { supportsRedundancy } from "../data/redundancyAvailability.js";
 
 /**
+ * Blob Archive does not support ZRS/GZRS. When users request a zone-based
+ * redundancy with Archive tier, we fall back to GRS so the archive option
+ * remains eligible instead of being dropped entirely.
+ */
+export function getBlobArchiveRedundancyAdjustment(answers) {
+  const selectedServices = answers?.targetService ?? [];
+  const selectedRedundancy = answers?.redundancy;
+
+  if (!selectedServices.includes("blobs")) return null;
+  if (answers?.blobAccessFrequency !== "archive") return null;
+  if (selectedRedundancy !== "zrs" && selectedRedundancy !== "gzrs") return null;
+
+  return {
+    requested: selectedRedundancy,
+    applied: "grs",
+  };
+}
+
+/**
  * Returns all outcomes that pass four gates:
  *  1. Service gate    — outcome belongs to at least one of the user-selected target services
  *  2. Region gate     — outcome is available in the selected region
@@ -13,6 +32,7 @@ export function getEligibleOutcomes(outcomes, answers) {
   const selectedRegion = answers.region;
   const selectedServices = answers.targetService; // array | undefined
   const selectedRedundancy = answers.redundancy;   // string | undefined
+  const blobArchiveAdjustment = getBlobArchiveRedundancyAdjustment(answers);
 
   // Build the set of outcome IDs allowed by the selected services
   const allowedByService =
@@ -56,7 +76,11 @@ export function getEligibleOutcomes(outcomes, answers) {
     }
 
     // --- Redundancy gate ---
-    if (selectedRedundancy && !supportsRedundancy(outcome.id, selectedRedundancy)) return false;
+    const effectiveRedundancy =
+      outcome.id === "blob-archive" && blobArchiveAdjustment
+        ? blobArchiveAdjustment.applied
+        : selectedRedundancy;
+    if (effectiveRedundancy && !supportsRedundancy(outcome.id, effectiveRedundancy)) return false;
 
     // --- Rules gate ---
     if (!outcome.rules || outcome.rules.length === 0) return true;
