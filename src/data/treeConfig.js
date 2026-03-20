@@ -63,6 +63,7 @@ export const questions = [
           { label: "Sweden Central", value: "swedencentral" },
           { label: "Poland Central", value: "polandcentral" },
           { label: "Italy North", value: "italynorth" },
+          { label: "Austria East", value: "austriaeast" },
           { label: "Spain Central", value: "spaincentral" },
         ],
       },

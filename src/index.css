@@ -276,17 +276,43 @@ body {
   background: var(--bg);
 }
 
+.result-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
 .result-title {
   font-size: 1rem;
   font-weight: 700;
   color: var(--primary);
-  margin-bottom: 0.35rem;
+  margin: 0;
+}
+
+.result-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
 }
 
 .result-description {
   font-size: 0.9rem;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.result-meta {
+  font-size: 0.8rem;
+  color: #334155;
+  margin-bottom: 0.45rem;
 }
 
 .no-results {

@@ -14,7 +14,7 @@ The app walks through a sequence of questions (Azure region, source NAS applianc
 
 | Layer | Choice |
 |---|---|
-| Framework | [React 18](https://react.dev/) (via [Vite](https://vitejs.dev/)) |
+| Framework | [React 19](https://react.dev/) (via [Vite](https://vitejs.dev/)) |
 | Language | JavaScript (JSX) — no TypeScript |
 | Styling | Plain CSS (no framework) |
 | State | React `useState` only — no external state library |
@@ -31,10 +31,14 @@ The app walks through a sequence of questions (Azure region, source NAS applianc
 
 ### Install and run
 
+Use one of the two setup paths below.
+
+### Path A: Quick start (clone and run)
+
 ```bash
-# 1. Clone the repo
-git clone <your-repo-url>
-cd decision-tree-app
+# 1. Clone this repo
+git clone https://github.com/Bapic/assess-nas-to-azure-storage.git
+cd assess-nas-to-azure-storage
 
 # 2. Install dependencies
 npm install
@@ -44,6 +48,33 @@ npm run dev
 ```
 
 The app will be available at **http://localhost:5173**.
+
+### Path B: Fork-first setup (recommended for contributors)
+
+```bash
+# 1. Fork this repo and clone your fork
+git clone https://github.com/<your-github-user>/assess-nas-to-azure-storage.git
+cd assess-nas-to-azure-storage
+
+# 2. Add the source repository as upstream
+git remote add upstream https://github.com/ansubram/assess-nas-to-azure-storage.git
+
+# 3. Verify remotes
+git remote -v
+
+# 4. Install dependencies and run
+npm install
+npm run dev
+```
+
+Expected `git remote -v` output pattern:
+
+```text
+origin   https://github.com/<your-github-user>/assess-nas-to-azure-storage.git (fetch)
+origin   https://github.com/<your-github-user>/assess-nas-to-azure-storage.git (push)
+upstream https://github.com/ansubram/assess-nas-to-azure-storage.git (fetch)
+upstream https://github.com/ansubram/assess-nas-to-azure-storage.git (push)
+```
 
 ### Build for production
 
@@ -142,12 +173,47 @@ Outcomes are defined in the `outcomes` array in `treeConfig.js`:
 
 1. **Service gate** — only outcomes belonging to the user's selected target services (`serviceOutcomeMap` in `treeConfig.js`).
 2. **Region gate** — outcome must be GA in the selected region (`regionAvailability.js`).
-3. **Blob tier gate** — maps `blobAccessFrequency` directly to one blob tier outcome.
+  Blob Archive uses a dedicated region set (derived from Azure products-by-region), while Blob Hot/Cool/Cold and Files use all app-listed public regions.
+3. **Blob tier gate** — maps `blobAccessFrequency` to one blob tier outcome.
+  If the selected tier is unavailable in the selected region, the engine upgrades to the nearest warmer Blob tier (`archive -> cold -> cool -> hot`) that is regionally available, and shows a notice in results.
 4. **Media type gate** — maps `filesMediaType` to `files-premium-ssd` or `files-standard-hdd`.
 5. **Redundancy gate** — outcome must support the selected redundancy type (`redundancyAvailability.js`).
+  For Blob Archive only: if `zrs` or `gzrs` is selected, the engine uses `grs` for compatibility and shows a notice in results.
 6. **Rules gate** — at least one rule set in `outcome.rules` must match the user's answers.
 
 To add a new filter, add a gate block in `matchOutcomes.js` and a data file (if needed) following the same pattern.
+
+---
+
+## Example decision flow (end-to-end)
+
+Example inputs:
+
+- Region: `eastus`
+- Source NAS: `netapp`
+- Target services: `blobs`, `files`, `anf`
+- Redundancy: `zrs`
+- Blob access frequency: `cool`
+- Files media type: `ssd`
+
+How filtering resolves:
+
+1. Service gate keeps all Blob, Files, and ANF outcomes.
+2. Region gate keeps all of the above in `eastus`.
+3. Blob tier gate keeps only `blob-cool`.
+4. Media type gate keeps only `files-premium-ssd` for Files.
+5. Redundancy gate keeps outcomes that support `zrs`.
+6. Rules gate keeps `anf-default` because `nas = netapp`.
+
+Final eligible outcomes:
+
+- `blob-cool`
+- `files-premium-ssd`
+- `anf-default`
+
+Note: If Blob access frequency is `archive` and redundancy is `zrs`/`gzrs`, Blob Archive remains eligible by applying `grs` for that tier and showing a compatibility message.
+
+Note: If the selected Blob access tier is not available in the chosen region, the app upgrades to the nearest warmer available Blob tier (for example, Cold → Cool, Cool → Hot) and marks that result with a "Tier upgraded" badge.
 
 ---
 
@@ -160,6 +226,10 @@ In `treeConfig.js`, add an entry under the correct `group` in the `region` quest
 ```
 
 Then in `regionAvailability.js`, add `"mynewregion"` to `ANF_REGIONS` if Azure NetApp Files is supported there.
+
+Also add `"mynewregion"` to `PUBLIC_REGIONS` so Blob and Files outcomes remain region-eligible for the new entry.
+
+If Azure products-by-region does not list Archive Storage for `mynewregion`, add it to `ARCHIVE_UNSUPPORTED_REGIONS`.
 
 ---
 
@@ -179,16 +249,49 @@ Then in `regionAvailability.js`, add `"mynewregion"` to `ANF_REGIONS` if Azure N
 
 ## Contributing
 
-1. Fork or clone the repo.
-2. Make your changes — most content changes only require editing `src/data/treeConfig.js`.
-3. Run `npm run dev` to verify locally.
-4. Open a pull request with a brief description of what changed and why.
+1. Create a branch from `master`.
+2. Make your changes (most content changes only require editing `src/data/treeConfig.js`).
+3. Verify locally with `npm run dev` (and `npm run build` before opening a PR).
+4. Open a pull request with a short summary of what changed and why.
+
+---
+
+## Working with origin and upstream
+
+This repository is commonly used with a fork workflow:
+
+- `origin` → your fork (example: `Bapic/assess-nas-to-azure-storage`)
+- `upstream` → source repo (example: `ansubram/assess-nas-to-azure-storage`)
+
+Useful commands:
+
+```bash
+# Check remotes
+git remote -v
+
+# Fetch latest refs
+git fetch origin
+git fetch upstream
+
+# Compare your branch with upstream
+git rev-list --left-right --count upstream/master...origin/master
+
+# Fast-forward local master from upstream (when no local commits)
+git checkout master
+git merge --ff-only upstream/master
+
+# Push updated master to your fork
+git push origin master
+
+# Create a feature branch for your change
+git checkout -b feat/<short-description>
+```
 
 ---
 
 ## Original Vite template notes
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The React Compiler is not enabled on this template because of its impact on dev and build performance. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
 ## Expanding the ESLint configuration
 

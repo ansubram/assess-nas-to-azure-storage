@@ -2,6 +2,64 @@ import { isAvailableInRegion } from "../data/regionAvailability.js";
 import { serviceOutcomeMap } from "../data/treeConfig.js";
 import { supportsRedundancy } from "../data/redundancyAvailability.js";
 
+const blobTierMap = {
+  hot: "blob-hot",
+  cool: "blob-cool",
+  cold: "blob-cold",
+  archive: "blob-archive",
+};
+
+const blobTierOrder = ["blob-hot", "blob-cool", "blob-cold", "blob-archive"];
+
+/**
+ * If a selected Blob tier is unavailable in the selected region, move to the
+ * nearest warmer tier (archive -> cold -> cool -> hot) that is available.
+ */
+export function getBlobTierRegionAdjustment(answers, availabilityFn = isAvailableInRegion) {
+  const selectedServices = answers?.targetService ?? [];
+  const selectedRegion = answers?.region;
+  const requestedTier = answers?.blobAccessFrequency;
+
+  if (!selectedServices.includes("blobs")) return null;
+  if (!selectedRegion || !requestedTier) return null;
+
+  const requestedOutcomeId = blobTierMap[requestedTier];
+  if (!requestedOutcomeId) return null;
+  if (availabilityFn(requestedOutcomeId, selectedRegion)) return null;
+
+  const requestedIndex = blobTierOrder.indexOf(requestedOutcomeId);
+  const appliedOutcomeId = blobTierOrder
+    .slice(0, requestedIndex)
+    .reverse()
+    .find((outcomeId) => availabilityFn(outcomeId, selectedRegion));
+
+  if (!appliedOutcomeId) return null;
+
+  return {
+    requested: requestedOutcomeId,
+    applied: appliedOutcomeId,
+  };
+}
+
+/**
+ * Blob Archive does not support ZRS/GZRS. When users request a zone-based
+ * redundancy with Archive tier, we fall back to GRS so the archive option
+ * remains eligible instead of being dropped entirely.
+ */
+export function getBlobArchiveRedundancyAdjustment(answers) {
+  const selectedServices = answers?.targetService ?? [];
+  const selectedRedundancy = answers?.redundancy;
+
+  if (!selectedServices.includes("blobs")) return null;
+  if (answers?.blobAccessFrequency !== "archive") return null;
+  if (selectedRedundancy !== "zrs" && selectedRedundancy !== "gzrs") return null;
+
+  return {
+    requested: selectedRedundancy,
+    applied: "grs",
+  };
+}
+
 /**
  * Returns all outcomes that pass four gates:
  *  1. Service gate    — outcome belongs to at least one of the user-selected target services
@@ -13,6 +71,8 @@ export function getEligibleOutcomes(outcomes, answers) {
   const selectedRegion = answers.region;
   const selectedServices = answers.targetService; // array | undefined
   const selectedRedundancy = answers.redundancy;   // string | undefined
+  const blobArchiveAdjustment = getBlobArchiveRedundancyAdjustment(answers);
+  const blobTierRegionAdjustment = getBlobTierRegionAdjustment(answers);
 
   // Build the set of outcome IDs allowed by the selected services
   const allowedByService =
@@ -30,15 +90,10 @@ export function getEligibleOutcomes(outcomes, answers) {
     // --- Blob tier gate ---
     // Maps access frequency answer directly to one of the four Blob tier outcome IDs.
     if (answers.blobAccessFrequency) {
-      const blobTierMap = {
-        hot:     "blob-hot",
-        cool:    "blob-cool",
-        cold:    "blob-cold",
-        archive: "blob-archive",
-      };
-      const isBlobTierOutcome = outcome.id in blobTierMap ||
-        Object.values(blobTierMap).includes(outcome.id);
-      if (isBlobTierOutcome && outcome.id !== blobTierMap[answers.blobAccessFrequency]) {
+      const requestedBlobOutcomeId = blobTierMap[answers.blobAccessFrequency];
+      const effectiveBlobOutcomeId = blobTierRegionAdjustment?.applied ?? requestedBlobOutcomeId;
+      const isBlobTierOutcome = Object.values(blobTierMap).includes(outcome.id);
+      if (isBlobTierOutcome && outcome.id !== effectiveBlobOutcomeId) {
         return false;
       }
     }
@@ -56,7 +111,11 @@ export function getEligibleOutcomes(outcomes, answers) {
     }
 
     // --- Redundancy gate ---
-    if (selectedRedundancy && !supportsRedundancy(outcome.id, selectedRedundancy)) return false;
+    const effectiveRedundancy =
+      outcome.id === "blob-archive" && blobArchiveAdjustment
+        ? blobArchiveAdjustment.applied
+        : selectedRedundancy;
+    if (effectiveRedundancy && !supportsRedundancy(outcome.id, effectiveRedundancy)) return false;
 
     // --- Rules gate ---
     if (!outcome.rules || outcome.rules.length === 0) return true;
