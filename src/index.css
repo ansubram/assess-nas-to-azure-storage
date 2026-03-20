@@ -309,6 +309,12 @@ body {
   line-height: 1.5;
 }
 
+.result-meta {
+  font-size: 0.8rem;
+  color: #334155;
+  margin-bottom: 0.45rem;
+}
+
 .no-results {
   color: var(--muted);
   font-size: 0.95rem;

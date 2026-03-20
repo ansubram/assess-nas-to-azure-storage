@@ -173,7 +173,9 @@ Outcomes are defined in the `outcomes` array in `treeConfig.js`:
 
 1. **Service gate** — only outcomes belonging to the user's selected target services (`serviceOutcomeMap` in `treeConfig.js`).
 2. **Region gate** — outcome must be GA in the selected region (`regionAvailability.js`).
-3. **Blob tier gate** — maps `blobAccessFrequency` directly to one blob tier outcome.
+  Blob Archive uses a dedicated region set (derived from Azure products-by-region), while Blob Hot/Cool/Cold and Files use all app-listed public regions.
+3. **Blob tier gate** — maps `blobAccessFrequency` to one blob tier outcome.
+  If the selected tier is unavailable in the selected region, the engine upgrades to the nearest warmer Blob tier (`archive -> cold -> cool -> hot`) that is regionally available, and shows a notice in results.
 4. **Media type gate** — maps `filesMediaType` to `files-premium-ssd` or `files-standard-hdd`.
 5. **Redundancy gate** — outcome must support the selected redundancy type (`redundancyAvailability.js`).
   For Blob Archive only: if `zrs` or `gzrs` is selected, the engine uses `grs` for compatibility and shows a notice in results.
@@ -211,6 +213,8 @@ Final eligible outcomes:
 
 Note: If Blob access frequency is `archive` and redundancy is `zrs`/`gzrs`, Blob Archive remains eligible by applying `grs` for that tier and showing a compatibility message.
 
+Note: If the selected Blob access tier is not available in the chosen region, the app upgrades to the nearest warmer available Blob tier (for example, Cold → Cool, Cool → Hot) and marks that result with a "Tier upgraded" badge.
+
 ---
 
 ## Adding a new Azure region
@@ -222,6 +226,10 @@ In `treeConfig.js`, add an entry under the correct `group` in the `region` quest
 ```
 
 Then in `regionAvailability.js`, add `"mynewregion"` to `ANF_REGIONS` if Azure NetApp Files is supported there.
+
+Also add `"mynewregion"` to `PUBLIC_REGIONS` so Blob and Files outcomes remain region-eligible for the new entry.
+
+If Azure products-by-region does not list Archive Storage for `mynewregion`, add it to `ARCHIVE_UNSUPPORTED_REGIONS`.
 
 ---
 

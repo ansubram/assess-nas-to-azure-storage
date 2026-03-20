@@ -1,5 +1,8 @@
 import { isAvailableInRegion } from "../data/regionAvailability.js";
-import { getBlobArchiveRedundancyAdjustment } from "../utils/matchOutcomes.js";
+import {
+  getBlobArchiveRedundancyAdjustment,
+  getBlobTierRegionAdjustment,
+} from "../utils/matchOutcomes.js";
 
 /**
  * Resolve a stored answer value (string or array) to a human-readable label
@@ -20,6 +23,11 @@ function resolveLabel(question, value) {
   return flat.find((o) => o.value === value)?.label ?? value;
 }
 
+function getOutcomeTierLabel(outcome) {
+  const rightSide = outcome.title?.split("—")?.[1]?.trim();
+  return rightSide || "N/A";
+}
+
 export default function Results({ outcomes, answers, questions, onRestart }) {
   // Show a notice only if the user explicitly selected ANF as a target service
   // but it was blocked by region availability.
@@ -30,11 +38,18 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
     !isAvailableInRegion("anf-default", answers.region);
 
   const blobArchiveRedundancyAdjustment = getBlobArchiveRedundancyAdjustment(answers);
+  const blobTierRegionAdjustment = getBlobTierRegionAdjustment(answers);
   const redundancyLabelMap = {
     lrs: "LRS",
     zrs: "ZRS",
     grs: "GRS",
     gzrs: "GZRS",
+  };
+  const blobTierLabelMap = {
+    "blob-hot": "Hot",
+    "blob-cool": "Cool",
+    "blob-cold": "Cold",
+    "blob-archive": "Archive",
   };
 
   // Build the list of questions that were actually answered (visible questions only)
@@ -62,6 +77,12 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
         </p>
       )}
 
+      {blobTierRegionAdjustment && (
+        <p className="region-notice">
+          ⚠ Azure Blob {blobTierLabelMap[blobTierRegionAdjustment.requested]} tier is not available in the selected region. For compatibility, this assessment upgrades to {blobTierLabelMap[blobTierRegionAdjustment.applied]} tier.
+        </p>
+      )}
+
       {/* Methodology callout */}
       <div className="callout-section">
         <ul className="callout-list">
@@ -84,19 +105,37 @@ export default function Results({ outcomes, answers, questions, onRestart }) {
         </p>
       ) : (
         <ul className="results-list">
-          {outcomes.map((outcome) => (
-            <li key={outcome.id} className="result-item">
-              <div className="result-title-row">
-                <h3 className="result-title">{outcome.title}</h3>
-                {outcome.id === "blob-archive" && blobArchiveRedundancyAdjustment && (
-                  <span className="result-badge" aria-label="Redundancy adjusted for compatibility">
-                    Redundancy adjusted to {redundancyLabelMap[blobArchiveRedundancyAdjustment.applied]}
-                  </span>
-                )}
-              </div>
-              <p className="result-description">{outcome.description}</p>
-            </li>
-          ))}
+          {outcomes.map((outcome) => {
+            const outcomeTier = getOutcomeTierLabel(outcome);
+            const effectiveRedundancy =
+              outcome.id === "blob-archive" && blobArchiveRedundancyAdjustment
+                ? blobArchiveRedundancyAdjustment.applied
+                : answers?.redundancy;
+            const outcomeRedundancy =
+              redundancyLabelMap[effectiveRedundancy] ?? String(effectiveRedundancy ?? "N/A");
+
+            return (
+              <li key={outcome.id} className="result-item">
+                <div className="result-title-row">
+                  <h3 className="result-title">{outcome.title}</h3>
+                  {outcome.id === "blob-archive" && blobArchiveRedundancyAdjustment && (
+                    <span className="result-badge" aria-label="Redundancy adjusted for compatibility">
+                      Redundancy adjusted to {redundancyLabelMap[blobArchiveRedundancyAdjustment.applied]}
+                    </span>
+                  )}
+                  {outcome.id === blobTierRegionAdjustment?.applied && (
+                    <span className="result-badge" aria-label="Tier adjusted for regional availability">
+                      Tier upgraded from {blobTierLabelMap[blobTierRegionAdjustment.requested]}
+                    </span>
+                  )}
+                </div>
+                <p className="result-meta">
+                  Tier: {outcomeTier} | Redundancy: {outcomeRedundancy}
+                </p>
+                <p className="result-description">{outcome.description}</p>
+              </li>
+            );
+          })}
         </ul>
       )}
 
